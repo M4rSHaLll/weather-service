@@ -23,7 +23,7 @@ curl http://localhost:3000/moscow
 | Переменная | Значение по умолчанию |
 |---|---|
 | `HTTP_ADDR` | `:3000` |
-| `DATABASE_URL` | `postgresql://postgres:a864653K@localhost:54321/weather` |
+| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:54321/weather` |
 | `WEATHER_CITY` | `moscow` |
 | `WEATHER_POLL_INTERVAL` | `30m` |
 | `HTTP_CLIENT_TIMEOUT` | `10s` |
