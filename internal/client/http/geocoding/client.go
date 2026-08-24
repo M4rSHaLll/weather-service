@@ -1,10 +1,12 @@
 package geocoding
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 )
 
 type Response struct {
@@ -14,22 +16,25 @@ type Response struct {
 	Longitude float64 `json:"longitude"`
 }
 
-type client struct {
+type Client struct {
 	httpClient *http.Client
 }
 
-func NewClient(httpClient *http.Client) *client {
-	return &client{
+func NewClient(httpClient *http.Client) *Client {
+	return &Client{
 		httpClient: httpClient,
 	}
 }
 
-func (c *client) GetCoords(city string) (Response, error) {
-	resp, err := c.httpClient.Get(
-		fmt.Sprintf("https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=ru&format=json", city),
-	)
+func (c *Client) GetCoords(ctx context.Context, city string) (Response, error) {
+	query := url.Values{"name": {city}, "count": {"1"}, "language": {"ru"}, "format": {"json"}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://geocoding-api.open-meteo.com/v1/search?"+query.Encode(), nil)
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return Response{}, fmt.Errorf("send request: %w", err)
 	}
 
 	defer resp.Body.Close()
@@ -42,9 +47,11 @@ func (c *client) GetCoords(city string) (Response, error) {
 		Results []Response `json:"results"`
 	}
 
-	err = json.NewDecoder(resp.Body).Decode(&geoResp)
-	if err != nil {
-		return Response{}, err
+	if err := json.NewDecoder(resp.Body).Decode(&geoResp); err != nil {
+		return Response{}, fmt.Errorf("decode response: %w", err)
+	}
+	if len(geoResp.Results) == 0 {
+		return Response{}, errors.New("city not found")
 	}
 
 	return geoResp.Results[0], nil
