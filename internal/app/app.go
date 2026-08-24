@@ -13,9 +13,12 @@ import (
 	"github.com/M4rSHaLll/weather-service/internal/collector"
 	"github.com/M4rSHaLll/weather-service/internal/config"
 	"github.com/M4rSHaLll/weather-service/internal/service"
+	"github.com/M4rSHaLll/weather-service/internal/storage/cached"
 	"github.com/M4rSHaLll/weather-service/internal/storage/postgres"
+	redisstorage "github.com/M4rSHaLll/weather-service/internal/storage/redis"
 	httptransport "github.com/M4rSHaLll/weather-service/internal/transport/http"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
@@ -28,7 +31,23 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("ping postgres: %w", err)
 	}
 
-	repository := postgres.NewReadingRepository(pool)
+	redisOptions, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		return fmt.Errorf("parse redis URL: %w", err)
+	}
+	redisOptions.DialTimeout = cfg.RedisTimeout
+	redisOptions.ReadTimeout = cfg.RedisTimeout
+	redisOptions.WriteTimeout = cfg.RedisTimeout
+	redisOptions.MaxRetries = 1
+	redisClient := redis.NewClient(redisOptions)
+	defer redisClient.Close()
+	if err := redisClient.Ping(ctx).Err(); err != nil {
+		logger.Warn("redis unavailable; cache will be bypassed", "error", err)
+	}
+
+	postgresRepository := postgres.NewReadingRepository(pool)
+	redisCache := redisstorage.NewReadingCache(redisClient, cfg.CacheTTL)
+	repository := cached.NewReadingRepository(postgresRepository, redisCache, logger)
 	httpClient := &http.Client{Timeout: cfg.RequestTimeout}
 	weatherCollector := collector.New(
 		cfg.City,
